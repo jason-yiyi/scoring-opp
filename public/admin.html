@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>管理後台 - 評分設定</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🥇 評分系統 - 管理後台</h1>
+        <p>在這裡設定評分項目和組別。<strong>注意：儲存新設定將會清除所有已有的評分！</strong></p>
+
+        <div class="setup-section">
+            <div class="setup-box">
+                <h3>評分項目</h3>
+                <input type="text" id="item-input" placeholder="例如：簡報技巧">
+                <button id="add-item">新增</button>
+                <ul id="items-list"></ul>
+            </div>
+            <div class="setup-box">
+                <h3>組別名稱</h3>
+                <input type="text" id="group-input" placeholder="例如：A組">
+                <button id="add-group">新增</button>
+                <ul id="groups-list"></ul>
+            </div>
+        </div>
+
+        <button id="save-config">儲存設定 (並重設分數)</button>
+        <div id="message" class="message-box"></div>
+
+        <div class="nav-links">
+            <a href="/scorer.html" target="_blank">前往評分頁面</a>
+            <a href="/results.html" target="_blank">查看結果頁面</a>
+        </div>
+    </div>
+    <script>
+        let items = [];
+        let groups = [];
+        const itemInput = document.getElementById('item-input');
+        const itemsList = document.getElementById('items-list');
+        const groupInput = document.getElementById('group-input');
+        const groupsList = document.getElementById('groups-list');
+        const saveBtn = document.getElementById('save-config');
+        const messageDiv = document.getElementById('message');
+
+        document.getElementById('add-item').onclick = () => addToList(items, itemInput, itemsList, 'item');
+        document.getElementById('add-group').onclick = () => addToList(groups, groupInput, groupsList, 'group');
+
+        function addToList(list, input, ul, type) {
+            const text = input.value.trim();
+            if (text) {
+                list.push(text);
+                input.value = '';
+                renderList(list, ul, type);
+            }
+        }
+
+        function renderList(list, ul, type) {
+            ul.innerHTML = '';
+            list.forEach((item, index) => {
+                ul.innerHTML += `<li>${item} <button class"del-btn" onclick="removeItem('${type}', ${index})">X</button></li>`;
+            });
+        }
+
+        function removeItem(type, index) {
+            (type === 'item' ? items : groups).splice(index, 1);
+            renderList(type === 'item' ? items : itemsList, type === 'group' ? groups : groupsList, type);
+        }
+
+        // 載入目前設定
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                items = config.items || [];
+                groups = config.groups || [];
+                renderList(items, itemsList, 'item');
+                renderList(groups, groupsList, 'group');
+            } catch (e) { console.error('無法載入設定', e); }
+        }
+
+        // 儲存設定
+        saveBtn.onclick = async () => {
+            if (items.length === 0 || groups.length === 0) {
+                showMessage('項目和組別不能為空', 'error');
+                return;
+            }
+            if (!confirm('確定要儲存新設定嗎？這將會清除所有舊的評分紀錄！')) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items, groups })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMessage('設定已成功儲存！', 'success');
+                } else {
+                    showMessage(`儲存失敗: ${data.message}`, 'error');
+                }
+            } catch (e) {
+                showMessage(`儲存失敗: ${e.message}`, 'error');
+            }
+        };
+
+        function showMessage(msg, type) {
+            messageDiv.textContent = msg;
+            messageDiv.className = `message-box ${type}`;
+        }
+
+        window.onload = loadConfig;
+    </script>
+</body>
+</html>

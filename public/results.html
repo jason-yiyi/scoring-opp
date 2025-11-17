@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>即時結果</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📊 即時評分結果</h1>
+        <button id="refresh-btn">重新整理</button>
+        <div id="scorer-count">正在載入...</div>
+        
+        <h2>總分排名 (依平均總分)</h2>
+        <table id="total-results-table">
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>組別</th>
+                    <th>平均總分</th>
+                </tr>
+            </thead>
+            <tbody id="total-results-body"></tbody>
+        </table>
+
+        <h2>詳細項目平均</h2>
+        <div id="detailed-area" style="overflow-x:auto;">
+            <table id="detailed-table">
+                <thead id="detailed-head"></thead>
+                <tbody id="detailed-body"></tbody>
+            </table>
+        </div>
+        
+        <div class="nav-links">
+            <a href="/scorer.html" target="_blank">我也要評分</a>
+        </div>
+    </div>
+    <script>
+        const detailedHead = document.getElementById('detailed-head');
+        const detailedBody = document.getElementById('detailed-body');
+        const totalBody = document.getElementById('total-results-body');
+        const scorerCountDiv = document.getElementById('scorer-count');
+        const refreshBtn = document.getElementById('refresh-btn');
+
+        refreshBtn.onclick = loadData;
+
+        async function loadData() {
+            try {
+                scorerCountDiv.textContent = '正在載入...';
+                
+                // 同時取得設定檔和結果
+                const [configRes, resultsRes] = await Promise.all([
+                    fetch('/api/config'),
+                    fetch('/api/results')
+                ]);
+
+                if (!configRes.ok || !resultsRes.ok) {
+                    throw new Error('無法取得資料');
+                }
+
+                const config = await configRes.json();
+                const results = await resultsRes.json();
+                
+                // 更新評分人數
+                scorerCountDiv.textContent = `目前已有 ${results.scorerCount} 位評分者提交。`;
+
+                // 1. 建立總分排名表格
+                totalBody.innerHTML = '';
+                results.groupTotals.forEach((group, index) => {
+                    totalBody.innerHTML += `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${group.group_name}</td>
+                            <td>${parseFloat(group.group_average).toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+
+                // 2. 建立詳細項目表格
+                // 2a. 標頭
+                let headRow = '<tr><th>組別</th>';
+                config.items.forEach(item => {
+                    headRow += `<th>${item} (均分)</th>`;
+                });
+                headRow += '</tr>';
+                detailedHead.innerHTML = headRow;
+
+                // 2b. 內容
+                detailedBody.innerHTML = '';
+                config.groups.forEach(group => {
+                    let bodyRow = `<tr><td><strong>${group}</strong></td>`;
+                    config.items.forEach(item => {
+                        // 從 results.itemAvgs 找出對應的分數
+                        const scoreData = results.itemAvgs.find(
+                            s => s.group_name === group && s.item_name === item
+                        );
+                        const avg = scoreData ? parseFloat(scoreData.average).toFixed(2) : 'N/A';
+                        bodyRow += `<td>${avg}</td>`;
+                    });
+                    bodyRow += '</tr>';
+                    detailedBody.innerHTML += bodyRow;
+                });
+
+            } catch (e) {
+                scorerCountDiv.textContent = `載入失敗: ${e.message}`;
+                console.error(e);
+            }
+        }
+
+        // 頁面載入時自動載入一次
+        window.onload = loadData;
+        // 每15秒自動刷新一次
+        setInterval(loadData, 15000);
+    </script>
+</body>
+</html>

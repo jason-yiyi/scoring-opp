@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>評分輸入頁面</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📝 評分輸入</h1>
+        
+        <div class="scorer-name">
+            <label for="scorer-name">您的姓名/代號：</label>
+            <input type="text" id="scorer-name" placeholder="請輸入您的名字">
+        </div>
+
+        <div id="loading">正在載入設定...</div>
+        <div id="scoring-area" style="overflow-x:auto;">
+            <table id="scoring-table">
+                <thead id="table-head"></thead>
+                <tbody id="table-body"></tbody>
+            </table>
+        </div>
+        
+        <button id="submit-scores">提交分數</button>
+        <div id="message" class="message-box"></div>
+        
+        <div class="nav-links">
+            <a href="/results.html" target="_blank">查看即時結果</a>
+        </div>
+    </div>
+
+    <script>
+        let config = { items: [], groups: [] };
+        const tableHead = document.getElementById('table-head');
+        const tableBody = document.getElementById('table-body');
+        const scorerNameInput = document.getElementById('scorer-name');
+        const messageDiv = document.getElementById('message');
+        const loadingDiv = document.getElementById('loading');
+
+        // 載入頁面時, 從伺服器取得設定並建立表格
+        window.onload = async () => {
+            try {
+                const res = await fetch('/api/config');
+                if (!res.ok) throw new Error('無法取得設定');
+                config = await res.json();
+                
+                if (config.items.length === 0 || config.groups.length === 0) {
+                    loadingDiv.textContent = '系統尚未設定評分項目，請聯繫管理員。';
+                    return;
+                }
+
+                buildTable();
+                loadingDiv.style.display = 'none';
+
+            } catch (e) {
+                loadingDiv.textContent = `錯誤: ${e.message}`;
+                console.error(e);
+            }
+        };
+
+        function buildTable() {
+            // 1. 建立標頭 (Items)
+            let headRow = '<tr><th>組別</th>';
+            config.items.forEach(item => {
+                headRow += `<th>${item}</th>`;
+            });
+            headRow += '</tr>';
+            tableHead.innerHTML = headRow;
+
+            // 2. 建立表格主體 (Groups)
+            tableBody.innerHTML = '';
+            config.groups.forEach((group) => {
+                let bodyRow = `<tr><td><strong>${group}</strong></td>`;
+                config.items.forEach((item) => {
+                    // 使用 data-group 和 data-item 屬性來標記
+                    bodyRow += `<td><input type="number" class="score-input" min="0" max="100" data-group="${group}" data-item="${item}" placeholder="0-100"></td>`;
+                });
+                bodyRow += '</tr>';
+                tableBody.innerHTML += bodyRow;
+            });
+        }
+
+        // 提交分數
+        document.getElementById('submit-scores').onclick = async () => {
+            const scorerName = scorerNameInput.value.trim();
+            if (!scorerName) {
+                showMessage('請先輸入您的姓名/代號', 'error');
+                scorerNameInput.focus();
+                return;
+            }
+
+            const scores = {};
+            let allFilled = true;
+            document.querySelectorAll('.score-input').forEach(input => {
+                const group = input.dataset.group;
+                const item = input.dataset.item;
+                const score = parseInt(input.value, 10);
+
+                if (isNaN(score) || input.value.trim() === '') {
+                    allFilled = false;
+                    input.style.borderColor = 'red';
+                } else {
+                    input.style.borderColor = '#ccc';
+                }
+                
+                if (!scores[group]) scores[group] = {};
+                scores[group][item] = score;
+            });
+
+            if (!allFilled) {
+                showMessage('請填寫所有分數欄位', 'error');
+                return;
+            }
+
+            // 傳送資料到後端
+            try {
+                const res = await fetch('/api/score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scorerName, scores })
+                });
+                const data = await res.json();
+                
+                if (res.ok) {
+                    showMessage('分數提交成功！感謝您的評分。', 'success');
+                } else {
+                    showMessage(`提交失敗: ${data.message}`, 'error');
+                }
+            } catch (e) {
+                showMessage(`提交失敗: ${e.message}`, 'error');
+            }
+        };
+
+        function showMessage(msg, type) {
+            messageDiv.textContent = msg;
+            messageDiv.className = `message-box ${type}`;
+        }
+    </script>
+</body>
+</html>
